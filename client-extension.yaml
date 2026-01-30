@@ -1,0 +1,16 @@
+assemble:
+    - from: vite-build
+      into: static
+
+time-management-ui:
+    name: Time Management UI
+    type: customElement
+    htmlElementName: time-management-ui
+    friendlyURLMapping: time-management-ui
+    instanceable: false
+    portletCategoryName: category.client-extensions
+    urls:
+        - assets/index.js
+    cssURLs:
+        - assets/index.css
+    useESM: true

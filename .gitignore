@@ -1,0 +1,31 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+
+# Dependencies
+node_modules/
+
+# Liferay & Build Folders (CRITICAL)
+build/
+vite-build/
+dist/
+dist-ssr/
+
+# Local env files
+*.local
+.env
+
+# Editor directories
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+
+# System files
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
