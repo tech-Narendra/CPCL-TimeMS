@@ -1,105 +1,155 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Card, Badge } from '../components/Shared';
-import { ATTENDANCE_DATA as INITIAL_DATA } from '../data/mockData';
+import { fetchAttendance } from '../services/attendance';
+import { fetchEmployeeByERC } from '../services/employeeService';
+import { fetchDepartmentByERC } from '../services/departmentService';
+import { formatDate, formatTime } from '../utils/dateTimeUtil';
 
 const AttendanceManagement = () => {
-  // State for search and table data
-  const [searchTerm, setSearchTerm] = useState("");
-  const [attendanceList, setAttendanceList] = useState(INITIAL_DATA);
+  const [attendanceList, setAttendanceList] = useState([]);
+  const [allData, setAllData] = useState([]);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [loading, setLoading] = useState(true);
 
-  // 1. Search Logic: Filters the list dynamically as you type
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        // 1️ Fetch attendance punches
+        const attendanceRes = await fetchAttendance();
+        const punches = attendanceRes.items || [];
+
+        // 2️ Collect unique employee ERCs
+        const employeeERCs = [
+          ...new Set(punches.map(p => p.r_employeePunch_c_cpclEmployeeERC))
+        ];
+
+        // 3️ Fetch employees
+        const employeeResponses = await Promise.all(
+          employeeERCs.map(erc => fetchEmployeeByERC(erc))
+        );
+
+        const employeeMap = {};
+        employeeResponses.forEach(emp => {
+          employeeMap[emp.externalReferenceCode] = {
+            empId: emp.employeeNumber,
+            name: emp.employeeName,
+            departmentERC: emp.r_department_c_cpclDepartmentERC
+          };
+        });
+
+        // 4️ Collect unique department ERCs
+        const departmentERCs = [
+          ...new Set(
+            Object.values(employeeMap)
+              .map(e => e.departmentERC)
+              .filter(Boolean)
+          )
+        ];
+
+        // 5️ Fetch departments
+        const departmentResponses = await Promise.all(
+          departmentERCs.map(erc => fetchDepartmentByERC(erc))
+        );
+
+        const departmentMap = {};
+        departmentResponses.forEach(dept => {
+          departmentMap[dept.externalReferenceCode] =
+            dept.departmentName || dept.name;
+        });
+
+        // 6️ Enrich attendance data
+        const enriched = punches.map(p => {
+          const empERC = p.r_employeePunch_c_cpclEmployeeERC;
+          const emp = employeeMap[empERC];
+
+          return {
+            id: p.id,
+            attendanceDate: formatDate(p.attendanceDate),
+            attendanceTime: formatTime(p.attendanceTime),
+            punchType: p.punchType?.name,
+            status: p.punchStatus?.name || 'Valid',
+            empId: emp?.empId || '-',
+            employeeName: emp?.name || 'Unknown',
+            departmentName: departmentMap[emp?.departmentERC] || '-'
+          };
+        });
+
+        setAttendanceList(enriched);
+        setAllData(enriched);
+      } catch (err) {
+        console.error(err);
+        alert('Failed to load attendance data');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadData();
+  }, []);
+
+  //  Search
   const handleSearch = (e) => {
     const value = e.target.value.toLowerCase();
     setSearchTerm(value);
-    
-    const filteredData = INITIAL_DATA.filter(row => 
-      row.name.toLowerCase().includes(value) || 
-      row.id.toLowerCase().includes(value) ||
-      row.dept.toLowerCase().includes(value)
-    );
-    setAttendanceList(filteredData);
-  };
 
-  // 2. Import Logic: Triggers file selection
-  const handleImport = () => {
-    const fileInput = document.createElement('input');
-    fileInput.type = 'file';
-    fileInput.accept = '.csv, .json';
-    
-    fileInput.onchange = (e) => {
-      const file = e.target.files[0];
-      if (file) {
-        alert(`Uploading ${file.name} to Liferay backend...`);
-        // Next step: Integration with your Spring Boot REST API
-      }
-    };
-    fileInput.click();
+    const filtered = allData.filter(row =>
+      row.employeeName.toLowerCase().includes(value) ||
+      row.empId.toLowerCase().includes(value) ||
+      row.departmentName.toLowerCase().includes(value) ||
+      row.punchType.toLowerCase().includes(value)
+    );
+
+    setAttendanceList(filtered);
   };
 
   return (
     <div className="attendance-container">
-      {/* Header Section with Actions */}
       <div className="section-title-container">
         <span className="main-title">Attendance Management</span>
-        
-        <div className="header-actions">
-          <div className="search-wrapper">
-            <i className="fas fa-search"></i>
-            <input 
-              type="text" 
-              className="search-input"
-              placeholder="Search Name, ID or Dept..." 
-              value={searchTerm}
-              onChange={handleSearch}
-            />
-          </div>
-          <br></br>          
-          <button className="btn btn-primary btn-sm" onClick={handleImport}>
-            <i className="fas fa-file-import"></i> 
-            Import Attendance
-          </button>
-        </div>
+
+        <input
+          type="text"
+          placeholder="Search emp / dept"
+          value={searchTerm}
+          onChange={handleSearch}
+        />
       </div>
 
-      {/* Main Table Card */}
-      <Card sx={{ borderRadius: 6, p: 0, overflow: 'hidden' }}>
-        <table className="custom-attendance-table">
-          <thead>
-            <tr>
-              <th>Date</th>
-              <th>Emp ID</th>
-              <th>Name</th>
-              <th>Department</th>
-              <th>Check In</th>
-              <th>Check Out</th>
-              <th>Work Hours</th>
-              <th>Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {attendanceList.length > 0 ? (
-              attendanceList.map(row => (
-                <tr key={row.id}>
-                  <td>{row.date}</td>
-                  <td><strong>{row.id}</strong></td>
-                  <td>{row.name}</td>
-                  <td>{row.dept}</td>
-                  <td>{row.in}</td>
-                  <td>{row.out}</td>
-                  <td>{row.duration}</td>
-                  <td><Badge status={row.status} /></td>
+      <Card>
+        <div className="table-responsive">
+          {loading ? (
+            <p>Loading attendance...</p>
+          ) : (
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Emp ID</th>
+                  <th>Employee</th>
+                  <th>Department</th>
+                  <th>Punch Type</th>
+                  <th>Time</th>
+                  <th>Punch Status</th>
                 </tr>
-              ))
-            ) : (
-              <tr>
-                <td colSpan="8" className="empty-state">
-                  <i className="fas fa-user-slash"></i>
-                  <p>No records found matching "{searchTerm}"</p>
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+              </thead>
+              <tbody>
+                {attendanceList.map(row => (
+                  <tr key={row.id}>
+                    <td>{row.attendanceDate}</td>
+                    <td>{row.empId}</td>
+                    <td>{row.employeeName}</td>
+                    <td>{row.departmentName}</td>
+                    <td>{row.punchType}</td>
+                    <td>{row.attendanceTime}</td>
+                    <td>
+                      <Badge status={row.status} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
       </Card>
     </div>
   );

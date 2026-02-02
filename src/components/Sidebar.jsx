@@ -5,7 +5,7 @@ const Sidebar = ({ activeTab, setActiveTab }) => {
     { id: 'dashboard', label: 'Dashboard', icon: 'fa-th-large' },
     { id: 'attendance', label: 'Attendance Management', icon: 'fa-clock' },
     { id: 'employees', label: 'Employee Management', icon: 'fa-users' },
-    { id: 'leave', label: 'Leave Management', icon: 'fa-calendar-minus' },
+    { id: 'leaves', label: 'Leave Management', icon: 'fa-calendar-minus' },
     { id: 'shifts', label: 'Shift Management', icon: 'fa-business-time' },
     { id: 'reports', label: 'Reports & Analytics', icon: 'fa-chart-line' },
   ];

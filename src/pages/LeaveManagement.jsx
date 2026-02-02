@@ -1,99 +1,131 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Card, Badge } from '../components/Shared';
-import { LEAVE_REQUESTS } from '../data/mockData';
 import ApplyLeaveModal from '../components/ApplyLeaveModal';
+import { fetchLeaves, applyLeave, updateLeaveStatus } from '../services/leaveService';
+import { fetchEmployeeByERC } from '../services/employeeService';
+import { formatDate } from '../utils/dateTimeUtil';
 
 const LeaveManagement = () => {
+  const [leaves, setLeaves] = useState([]);
   const [showModal, setShowModal] = useState(false);
 
-  const handleApplyLeave = data => {
-    console.log('Leave Applied:', data);
-    // later: API call here
+  const loadLeaves = async () => {
+    console.log('[LeaveManagement] Fetching leaves');
+
+    const res = await fetchLeaves();
+    console.log('[Leaves API Response]', res);
+
+    const items = res.items || [];
+
+    const ercs = [...new Set(items.map(l => l.leaveEmployeeERC))];
+    console.log('[Employee ERCs]', ercs);
+
+    const employees = await Promise.all(ercs.map(fetchEmployeeByERC));
+
+    const empMap = {};
+    employees.filter(Boolean).forEach(e => {
+      empMap[e.externalReferenceCode] = e.employeeName;
+    });
+
+    const enriched = items.map(l => {
+      console.log('[Leave Row]', l);
+      return {
+        ...l,
+        employeeName: empMap[l.leaveEmployeeERC] || 'Unknown'
+      };
+    });
+
+    setLeaves(enriched);
+  };
+
+  useEffect(() => {
+    loadLeaves();
+  }, []);
+
+  const handleApplyLeave = async (payload) => {
+    console.log('[LeaveManagement] handleApplyLeave', payload);
+    await applyLeave(payload);
+    await loadLeaves();
+  };
+
+  const updateStatus = async (id, status) => {
+    console.log('[Update Status]', id, status);
+
+    await updateLeaveStatus(id, status);
+    loadLeaves();
   };
 
   return (
-    <div className="grid-2">
-      <div style={{ gridColumn: 'span 2' }}>
-        <div className="section-title">
-          <span>Leave Applications</span>
-          <button
-            className="btn btn-primary btn-sm"
-            onClick={() => setShowModal(true)}
-          >
-            <i className="fas fa-plus"></i> Apply Leave
-          </button>
-        </div>
+    <div>
+      <div className="section-title">
+        <span>Leave Management</span>
+        <button
+          className="btn btn-primary btn-sm"
+          onClick={() => setShowModal(true)}
+        >
+          <i className="fas fa-plus"></i> Apply Leave
+        </button>
       </div>
 
       <Card>
-        <table>
-          <thead>
-            <tr>
-              <th>ID</th>
-              <th>Name</th>
-              <th>Type</th>
-              <th>Date</th>
-              <th>Days</th>
-              <th>Status</th>
-              <th>Action</th>
-            </tr>
-          </thead>
-          <tbody>
-            {LEAVE_REQUESTS.map(req => (
-              <tr key={req.id}>
-                <td>{req.id}</td>
-                <td>{req.name}</td>
-                <td>{req.type}</td>
-                <td>{req.start} - {req.end}</td>
-                <td>{req.days}</td>
-                <td><Badge status={req.status} /></td>
-                <td>
-                  {req.status === 'Pending' && (
-                    <button
-                      className="btn btn-primary btn-sm"
-                      onClick={() => alert(`Approved ${req.id}`)}
-                    >
-                      Approve
-                    </button>
-                  )}
-                </td>
+        <div className="table-responsive">
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Employee</th>
+                <th>Type</th>
+                <th>From</th>
+                <th>To</th>
+                <th>Reason</th>
+                <th>Status</th>
+                <th>Actions</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </Card>
+            </thead>
+            <tbody>
+              {leaves.map(l => (
+                <tr key={l.id}>
+                  <td>{l.employeeName}</td>
+                  <td>{l.leaveType?.name}</td>
+                  <td>{formatDate(l.fromDate)}</td>
+                  <td>{formatDate(l.toDate)}</td>
+                  <td>{l.reason}</td>
+                  <td>
+                    <Badge status={l.leaveStatus?.name} />
+                  </td>
+                  <td>
+                    {l.leaveStatus?.key === 'Applied' && (
+                      <div className="d-flex flex-column gap-2">
+                        <button
+                          className="btn btn-success btn-sm"
+                          onClick={() => updateStatus(l.id, 'Approved')}
+                        >
+                          Approve
+                        </button>
 
-      <Card>
-        <div className="section-title">Leave Balance</div>
-        <div style={{ marginTop: '20px' }}>
-          <div style={{ marginBottom: '20px' }}>
-            <div style={{ display:'flex', justifyContent:'space-between', marginBottom:'5px' }}>
-              <span>Casual Leave</span>
-              <span style={{ fontWeight:'bold' }}>10 / 12</span>
-            </div>
-            <div style={{ height:'10px', background:'#e0e0e0', borderRadius:'5px' }}>
-              <div style={{ width:'83%', height:'100%', background:'#4caf50', borderRadius:'5px' }} />
-            </div>
-          </div>
+                        <button
+                          className="btn btn-danger btn-sm"
+                          onClick={() => updateStatus(l.id, 'Rejected')}
+                        >
+                          Reject
+                        </button>
+                      </div>
+                    )}
+                  </td>
 
-          <div>
-            <div style={{ display:'flex', justifyContent:'space-between', marginBottom:'5px' }}>
-              <span>Sick Leave</span>
-              <span style={{ fontWeight:'bold' }}>8 / 10</span>
-            </div>
-            <div style={{ height:'10px', background:'#e0e0e0', borderRadius:'5px' }}>
-              <div style={{ width:'80%', height:'100%', background:'#2196f3', borderRadius:'5px' }} />
-            </div>
-          </div>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </Card>
 
       {showModal && (
         <ApplyLeaveModal
           onClose={() => setShowModal(false)}
-          onSubmit={handleApplyLeave}
+          onSuccess={handleApplyLeave}
         />
       )}
+
     </div>
   );
 };
